@@ -1,0 +1,27 @@
+# Perses server config for the demo (mounted at /etc/perses/config.yaml).
+# Dashboards and datasources come from files, not from clicks: what you
+# rehearse is what runs on stage.
+database:
+  file:
+    folder: /perses
+    extension: json
+    case_sensitive: false
+
+provisioning:
+  folders:
+    - /etc/perses/provisioning
+  interval: 1m
+
+frontend:
+  explorer:
+    enable: true
+
+plugin:
+  disabled:
+    - VictoriaLogs
+    - GreptimeDB
+    - Tempo
+    - Loki
+    - ClickHouse
+    - Splunk
+    - Pyroscope

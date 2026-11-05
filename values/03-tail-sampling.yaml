@@ -1,0 +1,55 @@
+# Stage 03 — Rung 4: tail sampling on a gateway tier.
+#
+# The demo's Collector (a DaemonSet, the "agent" tier here) keeps span metrics
+# and the noise filter, then routes every span of a trace to the same gateway
+# pod by trace ID. The gateway (values/gateway.yaml) waits for the whole trace
+# and decides.
+#
+#   agent:   traces ──► span_metrics
+#                   └─► forward/sample ─► traces/sample ─► filter ─► load_balancing (by traceID)
+#   gateway: otlp ─► tail_sampling ─► Jaeger
+
+opentelemetry-collector:
+  config:
+    connectors:
+      forward/sample: {}
+
+    processors:
+      # Same rule as stage 02.
+      filter/noise:
+        error_mode: ignore
+        traces:
+          span:
+            - 'resource.attributes["service.name"] == "frontend-proxy" and IsMatch(attributes["upstream_cluster"], "^(opentelemetry_collector_http|jaeger|flagd-ui|loadgen)$")'
+            - 'resource.attributes["service.name"] == "frontend-proxy" and IsMatch(attributes["http.url"], "/(otlp-http|jaeger|feature|loadgen)/")'
+
+    exporters:
+      # The gateway service is headless, so DNS returns one address per gateway
+      # pod. The DNS resolver needs no extra RBAC (the k8s resolver would).
+      load_balancing/gateway:
+        routing_key: traceID
+        protocol:
+          otlp:
+            tls:
+              insecure: true
+        resolver:
+          dns:
+            hostname: otel-gateway
+            port: "4317"
+
+    service:
+      pipelines:
+        traces:
+          processors:
+            - memory_limiter
+            - resource_detection
+            - resource
+            - transform/sanitize_spans
+            - gen_ai_normalizer
+            - transform/redact_sensitive_data
+            - redaction
+          exporters: [span_metrics, forward/sample]
+        traces/sample:
+          receivers: [forward/sample]
+          processors: [filter/noise]
+          exporters: [load_balancing/gateway]

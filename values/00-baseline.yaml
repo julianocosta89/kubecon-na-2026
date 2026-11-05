@@ -1,0 +1,21 @@
+# Stage 00 — Baseline.
+# Everything instrumented, nothing sampled. Every span goes to Jaeger.
+#
+# Same as the chart's traces pipeline, minus the debug exporter, so the
+# baseline doesn't pay for console output.
+# k8s_attributes is prepended by the chart's kubernetesAttributes preset.
+
+opentelemetry-collector:
+  config:
+    service:
+      pipelines:
+        traces:
+          processors:
+            - memory_limiter
+            - resource_detection
+            - resource
+            - transform/sanitize_spans
+            - gen_ai_normalizer
+            - transform/redact_sensitive_data
+            - redaction
+          exporters: [otlp_grpc/jaeger, span_metrics]

@@ -1,0 +1,24 @@
+# The demo's bundled Jaeger (query API under its UI base path).
+kind: GlobalDatasource
+metadata:
+  name: jaeger
+spec:
+  default: true
+  plugin:
+    kind: JaegerDatasource
+    spec:
+      proxy:
+        kind: HTTPProxy
+        spec:
+          url: http://jaeger:16686/jaeger/ui
+          allowedEndpoints:
+            - endpointPattern: /api/traces
+              method: GET
+            - endpointPattern: /api/traces/([a-zA-Z0-9]+)
+              method: GET
+            - endpointPattern: /api/services
+              method: GET
+            - endpointPattern: /api/services/([a-zA-Z0-9_.-]+)/operations
+              method: GET
+            - endpointPattern: /api/operations
+              method: GET

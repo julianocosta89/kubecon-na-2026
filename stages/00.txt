@@ -1,0 +1,30 @@
+SCENARIO 00: BASELINE, EVERYTHING ON                  script: Stage A (0:00–1:30)
+
+THE IDEA
+  Every library is instrumented, nothing is filtered, nothing is sampled. This
+  is the bill the next scenarios cut. Each one moves the "keep or drop"
+  decision to a different point of the pipeline:
+
+    app ──► network ──► Collector (agents) ──► gateway ──► Jaeger
+     01                  02                     03  tail sampling (10% of the rest)
+     don't create it     filter + sample 10%    04  adaptive (a budget, not a %)
+
+  The earlier you decide, the more you save, and the less you know when you decide.
+
+WHAT IS RUNNING
+  • kind cluster "kubecon-sampling": 1 control plane + 3 workers
+  • OpenTelemetry Demo 3.1.0: ~20 services, the load generator shops nonstop (10 users)
+  • Collector agents: one per worker (DaemonSet) → Jaeger, plus span metrics → Prometheus
+  • Gateway Collector: 2 pods, installed but idle until scenario 03
+  • Perses: the live dashboard, reading Prometheus and Jaeger
+@@CHANGES@@
+WHERE TO LOOK
+  Perses   {{PERSES}}
+  Jaeger   {{SHOP}}/jaeger/ui
+    Search service "checkout", open one trace: count its spans and services
+    for "[TK] spans across [TK] services".
+  Shop     {{SHOP}}         buy a telescope; that's your checkout trace
+  Flags    {{SHOP}}/feature  paymentFailure lives here (scenarios 02 and 03)
+
+NEXT
+  make run 01      stop creating telemetry nobody needs, at the source

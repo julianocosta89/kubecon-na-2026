@@ -1,0 +1,58 @@
+# Applied to EVERY stage. Stage files are layered on top:
+#   00 = common + 00
+#   01 = common + 00 + 01
+#   02 = common + 00 + 01 + 02
+#   03 = common + 00 + 01 + 03
+#
+# Helm merges maps across files but REPLACES lists, so any pipeline a stage
+# touches is restated in full in that stage's file.
+
+# Vendor-neutral stage: The live view is Perses (k8s/perses.yaml),
+# reading the demo's Prometheus and Jaeger.
+# Numbers for the scorecard come from Prometheus through scripts/demo.py.
+grafana:
+  enabled: false
+
+components:
+  load-generator:
+    envOverrides:
+      # [TK: users] Same value for every stage, dry run included.
+      - name: LOCUST_USERS
+        value: "10"
+      # Chart bug (since demo 3.0): it points the load generator at 4318, the
+      # OTLP/HTTP port, but locustfile.py uses the gRPC exporters. Every export
+      # fails silently and Jaeger never lists "load-generator". Docker Compose
+      # uses 4317; so do we.
+      - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        value: http://otel-collector:4317
+
+opentelemetry-collector:
+  # Collector v0.164.0 instead of the chart's 0.160.0: scenario 04 needs the
+  # adaptive_tail_sampling processor, which ships in otelcol-contrib from
+  # v0.163.0. Agents and gateway run the same binary. Keep this tag, the
+  # gateway's (values/gateway.yaml) and COLLECTOR_IMAGE in scripts/validate.sh
+  # in step.
+  image:
+    tag: "0.164.0"
+
+  config:
+    receivers:
+      # kind's kubelets serve self-signed certificates. Without this the
+      # kubelet metrics (pod CPU and memory, used by `make scorecard` and
+      # `make overhead`) fail with "x509: certificate signed by unknown authority".
+      kubeletstats:
+        insecure_skip_verify: true
+
+    connectors:
+      # Push span metrics every 15 s instead of the default 60 s. With 60 s,
+      # a Perses panel using rate(...[1m]) sees at most one sample and shows
+      # "no data", and the failure panels react a minute late on stage.
+      span_metrics:
+        metrics_flush_interval: 15s
+
+    service:
+      telemetry:
+        # Names this tier in Prometheus (label service_name), which the Perses
+        # dashboard and the scorecard filter on. The gateway calls itself otel-gateway.
+        resource:
+          service.name: otel-collector

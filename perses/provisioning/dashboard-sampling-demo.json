@@ -1,0 +1,793 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "sampling-demo",
+    "project": "opentelemetry-demo"
+  },
+  "spec": {
+    "display": {
+      "name": "Sampling demo",
+      "description": "Same shop, same load: what each sampling rung keeps, costs and loses."
+    },
+    "duration": "15m",
+    "refreshInterval": "10s",
+    "variables": [],
+    "panels": {
+      "spans": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Spans per second: into the Collector vs. into Jaeger",
+            "description": "Received: spans the agent tier accepted from the apps. Sent: spans the last tier exported to Jaeger. Scenario 01 lowers both lines (~20%); scenarios 02 and 03 lower only the second."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom",
+                "mode": "list"
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 2,
+                "areaOpacity": 0.1,
+                "connectNulls": false
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                },
+                "min": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(otelcol_receiver_accepted_spans_total{service_name=\"otel-collector\"}[1m]))",
+                    "seriesNameFormat": "received by the Collector"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(otelcol_exporter_sent_spans_total{service_name=~\"otel-collector|otel-gateway\", exporter=\"otlp_grpc/jaeger\"}[1m]))",
+                    "seriesNameFormat": "sent to Jaeger"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "kept": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Share of spans kept",
+            "description": "Sent to Jaeger ÷ received by the Collector."
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-number",
+              "format": {
+                "unit": "percent",
+                "decimalPlaces": 0
+              },
+              "sparkline": {}
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "100 * sum(rate(otelcol_exporter_sent_spans_total{service_name=~\"otel-collector|otel-gateway\", exporter=\"otlp_grpc/jaeger\"}[1m])) / sum(rate(otelcol_receiver_accepted_spans_total{service_name=\"otel-collector\"}[1m]))"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "collector_cpu": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Collector CPU by tier (cores)",
+            "description": "Process CPU of every Collector pod, summed per tier. The gateway is idle until stage 03."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom",
+                "mode": "list"
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 2,
+                "areaOpacity": 0.1,
+                "connectNulls": false
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                },
+                "min": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (service_name) (rate(otelcol_process_cpu_seconds_total{service_name=~\"otel-collector|otel-gateway\"}[1m]))",
+                    "seriesNameFormat": "{{service_name}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "collector_mem": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Collector memory by tier (RSS)",
+            "description": "Tail sampling holds every trace for decision_wait (10 s): watch the gateway in stage 03."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom",
+                "mode": "list"
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 2,
+                "areaOpacity": 0.1,
+                "connectNulls": false
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "bytes"
+                },
+                "min": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (service_name) (otelcol_process_memory_rss_bytes{service_name=~\"otel-collector|otel-gateway\"})",
+                    "seriesNameFormat": "{{service_name}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "service_cpu": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Service CPU (cores)",
+            "description": "Pod CPU from the kubelet. flagd and frontend: scenario 01 turns part of their tracing off. checkout (Go), ad (Java), cart (.NET): the overhead comparison."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom",
+                "mode": "list"
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 2,
+                "areaOpacity": 0.1,
+                "connectNulls": false
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                },
+                "min": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (k8s_deployment_name) ({__name__=~\"k8s_pod_cpu_usage\", k8s_deployment_name=~\"flagd|frontend|checkout|ad|cart\"})",
+                    "seriesNameFormat": "{{k8s_deployment_name}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "service_mem": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Service memory (working set)",
+            "description": "Pod memory from the kubelet. The flagd pod also runs the flag UI next to flagd."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom",
+                "mode": "list"
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 2,
+                "areaOpacity": 0.1,
+                "connectNulls": false
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "bytes"
+                },
+                "min": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (k8s_deployment_name) (k8s_pod_memory_working_set_bytes{k8s_deployment_name=~\"flagd|frontend|checkout|ad|cart\"})",
+                    "seriesNameFormat": "{{k8s_deployment_name}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "errors_counted": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Failed payments",
+            "description": "Every failed payment in the dashboard's time range, counted by span metrics before any filter or sampler (one per failed Charge call). Compare with the traces on the right. On stage, set the time range to the last 5 minutes."
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-number",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(increase(traces_span_metrics_calls_total{service_name=\"payment\", span_kind=\"SPAN_KIND_SERVER\", status_code=\"STATUS_CODE_ERROR\"}[${__range_s}s]))"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "errors_traces": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Failed payments you can debug: traces in Jaeger",
+            "description": "One row per failed payment that has a trace, in the same time range as the count on the left. Scenario 02 keeps about 1 in 10. Scenario 03 keeps all of them, about 10 s late."
+          },
+          "plugin": {
+            "kind": "TraceTable",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TraceQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "JaegerTraceQuery",
+                  "spec": {
+                    "service": "payment",
+                    "tags": "{\"error\":\"true\"}",
+                    "limit": 100
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "tail_policy": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Tail sampling: traces kept per policy (stage 03)",
+            "description": "Which policy kept each trace: keep-errors, keep-slow, sample-the-rest."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom",
+                "mode": "list"
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 2,
+                "areaOpacity": 0.1,
+                "connectNulls": false
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                },
+                "min": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (policy) (rate(otelcol_processor_tail_sampling_count_traces_sampled_total{sampled=\"true\"}[1m]))",
+                    "seriesNameFormat": "{{policy}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "tail_decision": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Tail sampling: decisions (stage 03)",
+            "description": "Every trace the gateway saw, by final decision."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom",
+                "mode": "list"
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 2,
+                "areaOpacity": 0.1,
+                "connectNulls": false
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                },
+                "min": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (decision) (rate(otelcol_processor_tail_sampling_global_count_traces_sampled_total[1m]))",
+                    "seriesNameFormat": "{{decision}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "adaptive_kept": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Spans kept per second: the budget vs. a fixed 10%",
+            "description": "Kept by the gateway: what adaptive tail sampling sends to Jaeger (scenario 04). A fixed 10% would send: a tenth of what the Collector receives, i.e. scenario 02 or 03 without errors. Turn the homepage flood on: the dashed line jumps with traffic, the solid one stays near the budget."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom",
+                "mode": "list"
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 2,
+                "areaOpacity": 0.1,
+                "connectNulls": false
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                },
+                "min": 0
+              },
+              "querySettings": [
+                {
+                  "queryIndex": 1,
+                  "lineStyle": "dashed"
+                },
+                {
+                  "queryIndex": 2,
+                  "lineStyle": "dotted"
+                }
+              ]
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(otelcol_exporter_sent_spans_total{service_name=\"otel-gateway\", exporter=\"otlp_grpc/jaeger\"}[1m]))",
+                    "seriesNameFormat": "kept by the gateway"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "0.1 * sum(rate(otelcol_receiver_accepted_spans_total{service_name=\"otel-collector\"}[1m]))",
+                    "seriesNameFormat": "a fixed 10% would send"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "vector(30)",
+                    "seriesNameFormat": "budget: 2 pods x 15"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "adaptive_rules": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Traces per second, by rule",
+            "description": "keep-errors: every trace with an error, always kept. budget: everything else, kept or dropped to stay near the budget."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom",
+                "mode": "list"
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 2,
+                "areaOpacity": 0.1,
+                "connectNulls": false
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                },
+                "min": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (rule) (rate({__name__=~\"otelcol_processor_adaptive_tail_sampling_traces_sampled(_total)?\"}[1m]))",
+                    "seriesNameFormat": "kept · {{rule}}"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (rule) (rate({__name__=~\"otelcol_processor_adaptive_tail_sampling_traces_dropped(_total)?\"}[1m]))",
+                    "seriesNameFormat": "dropped · {{rule}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "adaptive_rate": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Budget sampler: keeps 1 in N",
+            "description": "The average sample rate the budget rule settled on. It climbs when a flood arrives (the sampler adapting) and relaxes when the flood stops."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom",
+                "mode": "list"
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 2,
+                "areaOpacity": 0.1,
+                "connectNulls": false
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                },
+                "min": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate({__name__=~\"otelcol_processor_adaptive_tail_sampling_decision_sample_rate_sum\", rule=\"budget\"}[1m])) / sum(rate({__name__=~\"otelcol_processor_adaptive_tail_sampling_decision_sample_rate_count\", rule=\"budget\"}[1m]))",
+                    "seriesNameFormat": "1 in N"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "1 · What reaches the backend",
+            "collapse": {
+              "open": true
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 18,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/spans"
+              }
+            },
+            {
+              "x": 18,
+              "y": 0,
+              "width": 6,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/kept"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "2 · What it costs",
+            "collapse": {
+              "open": true
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/collector_cpu"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/collector_mem"
+              }
+            },
+            {
+              "x": 0,
+              "y": 8,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/service_cpu"
+              }
+            },
+            {
+              "x": 12,
+              "y": 8,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/service_mem"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "3 · The failure",
+            "collapse": {
+              "open": true
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 6,
+              "height": 10,
+              "content": {
+                "$ref": "#/spec/panels/errors_counted"
+              }
+            },
+            {
+              "x": 6,
+              "y": 0,
+              "width": 18,
+              "height": 10,
+              "content": {
+                "$ref": "#/spec/panels/errors_traces"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "4 · Tail sampling (scenario 03)",
+            "collapse": {
+              "open": true
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/tail_policy"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/tail_decision"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "5 · Adaptive sampling (scenario 04)",
+            "collapse": {
+              "open": true
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 9,
+              "content": {
+                "$ref": "#/spec/panels/adaptive_kept"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 6,
+              "height": 9,
+              "content": {
+                "$ref": "#/spec/panels/adaptive_rules"
+              }
+            },
+            {
+              "x": 18,
+              "y": 0,
+              "width": 6,
+              "height": 9,
+              "content": {
+                "$ref": "#/spec/panels/adaptive_rate"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

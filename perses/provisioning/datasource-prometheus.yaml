@@ -1,0 +1,29 @@
+# The demo's bundled Prometheus. Collector self-metrics, span metrics and
+# kubelet pod metrics all land here.
+kind: GlobalDatasource
+metadata:
+  name: prometheus
+spec:
+  default: true
+  plugin:
+    kind: PrometheusDatasource
+    spec:
+      proxy:
+        kind: HTTPProxy
+        spec:
+          url: http://prometheus:9090
+          allowedEndpoints:
+            - endpointPattern: /api/v1/labels
+              method: POST
+            - endpointPattern: /api/v1/series
+              method: POST
+            - endpointPattern: /api/v1/metadata
+              method: GET
+            - endpointPattern: /api/v1/query
+              method: POST
+            - endpointPattern: /api/v1/query_range
+              method: POST
+            - endpointPattern: /api/v1/label/([a-zA-Z0-9_-]+)/values
+              method: GET
+            - endpointPattern: /api/v1/parse_query
+              method: POST

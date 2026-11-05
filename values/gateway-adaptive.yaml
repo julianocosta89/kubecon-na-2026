@@ -1,0 +1,50 @@
+# Scenario 04: the gateway switches from tail_sampling (fixed 10% of the rest)
+# to adaptive_tail_sampling (a spans-per-second budget). Layered on top of
+# values/gateway.yaml by `make run 04`; `make run 03` drops it again.
+#
+# adaptive_tail_sampling is alpha and ships in otelcol-contrib from v0.163.0.
+# Rules are first-match: the first rule whose conditions match picks the sampler.
+
+alternateConfig:
+  processors:
+    adaptive_tail_sampling:
+      # Decide 2 s after the trace's root span arrives (stragglers land meanwhile),
+      # or after 45 s at the latest (a homepage-flood trace runs 100 requests).
+      decision_delay: 2s
+      trace_timeout: 45s
+      num_traces: 50000
+      decision_cache:
+        sampled_cache_size: 50000
+        non_sampled_cache_size: 100000
+      rules:
+        # Same promise as scenario 03: every trace with an error is kept.
+        - name: keep-errors
+          conditions:
+            - span.status.code == STATUS_CODE_ERROR
+          sampler:
+            type: always_sample
+
+        # Everything else shares a budget instead of a percentage. The sampler
+        # learns a rate per kind of trace (fingerprint: the service that started
+        # it + the routes it touched), re-tuned every 15 s. Common kinds, like a
+        # homepage flood, get sampled hard; rare kinds keep a bigger share.
+        - name: budget
+          sampler:
+            type: adaptive_throughput
+            # Per gateway pod: 2 pods x 15 = ~30 spans/s in total. Every kind of
+            # trace keeps a minimum share, so it settles somewhat above this.
+            goal_throughput: 15
+            initial_sampling_percentage: 10
+            fingerprint_attributes:
+              - root.resource.attributes["service.name"]
+              - span.attributes["http.route"]
+            adjustment_interval: 15s
+            weight: 0.5
+            max_keys: 500
+
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, adaptive_tail_sampling]
+        exporters: [otlp_grpc/jaeger]

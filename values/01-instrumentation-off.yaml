@@ -1,0 +1,50 @@
+# Scenario 01 — Rung 0: don't create it.
+# Turn off telemetry nobody needs, at the source. No Collector change.
+# Both picks come from the live shop's traces and span metrics (10 users).
+#
+# 1. flagd: the whole service's tracing.
+#    flagd, the feature-flag service, traces every flag lookup as THREE spans
+#    (RPC server span, resolveX server, resolveX internal): ~17-19 spans/s,
+#    12-13% of all spans. The services that call flagd barely record their
+#    side, so these spans are leaves: dropping them leaves no gaps in traces.
+#    flagd (Go, v0.16.0) builds its tracer from the standard exporter env vars;
+#    OTEL_TRACES_EXPORTER=none makes it skip tracer setup entirely. Its metrics
+#    keep flowing.
+#
+# 2. frontend: one instrumentation library, @opentelemetry/instrumentation-http.
+#    In this Next.js app it creates two kinds of spans nobody needs (~13/s, ~10%):
+#    - a copy of every API request's server span. Next.js 16 records its own
+#      server span with the same name and duration right under it;
+#    - a span for every static file (/_next/static/* chunks, /icons/*.svg),
+#      which Next.js doesn't trace at all.
+#    Traces stay connected without it: with no active span, Next.js extracts
+#    the incoming traceparent from the request headers itself (next 16.3.5,
+#    server/base-server.js and server/lib/trace/tracer.js). Static-file
+#    requests remain visible as the proxy's spans. What goes with it: the
+#    frontend's http.server.request.duration metric (nothing here uses it).
+#
+# Ruled out (measured, no env switch):
+#   frontend net,dns        zero spans in this demo
+#   browser resourceFetch   ~9 spans/s, configured in the frontend's code
+#   Envoy egress spans      ~18 spans/s, fixed in the proxy's baked-in config
+#   image-provider (nginx)  ~4.5 spans/s, "otel_trace on" fixed in its config
+#   product-catalog DB      ~6.5 spans/s, otelsql set up in Go code
+#   cart valkey             ~3 spans/s, AddRedisInstrumentation() in .NET code
+#
+# The per-library switches, for other services and languages:
+#   Node.js  OTEL_NODE_DISABLED_INSTRUMENTATIONS=fs,dns
+#   Python   OTEL_PYTHON_DISABLED_INSTRUMENTATIONS=redis
+#   Java     OTEL_INSTRUMENTATION_<NAME>_ENABLED=false
+#   .NET     OTEL_DOTNET_AUTO_TRACES_<NAME>_INSTRUMENTATION_ENABLED=false
+#   The demo already does this once: accounting ships with
+#   OTEL_DOTNET_AUTO_TRACES_ENTITYFRAMEWORKCORE_INSTRUMENTATION_ENABLED=false.
+
+components:
+  flagd:
+    envOverrides:
+      - name: OTEL_TRACES_EXPORTER
+        value: none
+  frontend:
+    envOverrides:
+      - name: OTEL_NODE_DISABLED_INSTRUMENTATIONS
+        value: http

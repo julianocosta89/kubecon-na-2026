@@ -1,0 +1,83 @@
+# Perses (CNCF) as the live view on stage: one dashboard with Prometheus
+# metrics and Jaeger traces side by side.
+# Config and provisioning come from the ConfigMap "perses-files", built by
+# `make perses` from the perses/ folder. Each file is mounted on its own
+# (subPath): Perses walks its provisioning folder recursively, and a whole
+# ConfigMap mount would make it load every file twice (via ..data).
+# __PERSES_IMAGE__ is replaced by `make perses` with PERSES_IMAGE from settings.env.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: perses
+  labels:
+    app.kubernetes.io/name: perses
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: perses
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: perses
+    spec:
+      containers:
+        - name: perses
+          image: __PERSES_IMAGE__
+          args:
+            - --config=/etc/perses/config.yaml
+            - --web.listen-address=:8080
+            - --log.level=warning
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: data
+              mountPath: /perses
+            - name: files
+              mountPath: /etc/perses/config.yaml
+              subPath: config.yaml
+            - name: files
+              mountPath: /etc/perses/provisioning/project.yaml
+              subPath: project.yaml
+            - name: files
+              mountPath: /etc/perses/provisioning/datasource-prometheus.yaml
+              subPath: datasource-prometheus.yaml
+            - name: files
+              mountPath: /etc/perses/provisioning/datasource-jaeger.yaml
+              subPath: datasource-jaeger.yaml
+            - name: files
+              mountPath: /etc/perses/provisioning/dashboard-sampling-demo.json
+              subPath: dashboard-sampling-demo.json
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: files
+          configMap:
+            name: perses-files
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: perses
+  labels:
+    app.kubernetes.io/name: perses
+spec:
+  selector:
+    app.kubernetes.io/name: perses
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

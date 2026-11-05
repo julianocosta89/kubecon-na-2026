@@ -1,0 +1,46 @@
+# Stage 02 — Rungs 2 and 3: filter noise we can name, then keep 10% of traces.
+#
+# Span metrics are computed BEFORE filtering and sampling, so request and error
+# rates stay complete. That is why traces are split in two pipelines:
+#
+#   traces         ──► span_metrics          (sees 100% of spans)
+#                  └─► forward/sample ─► traces/sample ─► filter ─► sampler ─► Jaeger
+
+opentelemetry-collector:
+  config:
+    connectors:
+      forward/sample: {}
+
+    processors:
+      # Rung 2: drop what we can name. In this demo there are no health-check
+      # spans, but the proxy traces its own tooling traffic: the browser's OTLP
+      # uploads, the Jaeger UI, the flag UI and the load-generator UI.
+      # Telemetry about telemetry. Nobody debugs it.
+      filter/noise:
+        error_mode: ignore
+        traces:
+          span:
+            - 'resource.attributes["service.name"] == "frontend-proxy" and IsMatch(attributes["upstream_cluster"], "^(opentelemetry_collector_http|jaeger|flagd-ui|loadgen)$")'
+            - 'resource.attributes["service.name"] == "frontend-proxy" and IsMatch(attributes["http.url"], "/(otlp-http|jaeger|feature|loadgen)/")'
+
+      # Rung 3: keep 10% of traces. Hashes the trace ID, so every Collector
+      # replica makes the same call and nothing has to remember anything.
+      probabilistic_sampler:
+        sampling_percentage: 10
+
+    service:
+      pipelines:
+        traces:
+          processors:
+            - memory_limiter
+            - resource_detection
+            - resource
+            - transform/sanitize_spans
+            - gen_ai_normalizer
+            - transform/redact_sensitive_data
+            - redaction
+          exporters: [span_metrics, forward/sample]
+        traces/sample:
+          receivers: [forward/sample]
+          processors: [filter/noise, probabilistic_sampler]
+          exporters: [otlp_grpc/jaeger]

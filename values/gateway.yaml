@@ -1,0 +1,101 @@
+# Gateway tier: a second Collector release that does tail sampling.
+# Installed by `make start` and idle until scenario 03 points the agents at it.
+# Scenario 03 runs it with tail_sampling (this file); scenario 04 layers
+# values/gateway-adaptive.yaml on top to switch it to adaptive_tail_sampling.
+# Same Collector version as the agents (see values/common.yaml).
+
+fullnameOverride: otel-gateway
+mode: deployment
+replicaCount: 2
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.164.0"
+
+# Headless: DNS returns every pod IP, which the load_balancing exporter needs.
+service:
+  clusterIP: None
+
+ports:
+  otlp-http:
+    enabled: false
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+
+resources:
+  limits:
+    memory: 512Mi
+
+# Full config, not merged with chart defaults.
+alternateConfig:
+  extensions:
+    health_check:
+      endpoint: ${env:MY_POD_IP}:13133
+
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: ${env:MY_POD_IP}:4317
+
+  processors:
+    memory_limiter:
+      check_interval: 5s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+
+    # Rung 4: wait for the whole trace, then decide.
+    # Policies are OR-ed: a trace is kept if any policy keeps it.
+    tail_sampling:
+      decision_wait: 10s
+      policies:
+        - name: keep-errors
+          type: status_code
+          status_code:
+            status_codes: [ERROR]
+        - name: keep-slow
+          type: latency
+          latency:
+            threshold_ms: 2000
+        - name: sample-the-rest
+          type: probabilistic
+          probabilistic:
+            sampling_percentage: 10
+
+  exporters:
+    otlp_grpc/jaeger:
+      endpoint: jaeger:4317
+      tls:
+        insecure: true
+      sending_queue:
+        batch: {}
+
+  service:
+    extensions: [health_check]
+    telemetry:
+      resource:
+        service.name: otel-gateway
+      metrics:
+        level: detailed
+        readers:
+          # Into the demo Collector's metrics pipeline, so it lands in
+          # Prometheus next to the agent tier's numbers.
+          - periodic:
+              interval: 10000
+              timeout: 5000
+              exporter:
+                otlp:
+                  protocol: http/protobuf
+                  endpoint: http://otel-collector:4318
+                  insecure: true
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, tail_sampling]
+        exporters: [otlp_grpc/jaeger]

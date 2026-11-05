@@ -1,0 +1,14 @@
+# Local cluster for the demo: 1 control plane + 3 workers.
+# Three workers means three Collector agents (the demo's Collector is a
+# DaemonSet), so the spans of one trace really do land on different agents.
+# That is what makes stage 03's load-balancing by trace ID necessary.
+#
+# kind runs every node as a Docker container on this laptop: give Docker
+# at least 10 GB of memory and 6 CPUs.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker
+  - role: worker
