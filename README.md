@@ -1,7 +1,8 @@
-# KubeCon NA 2026: a live sampling demo on the OpenTelemetry Astronomy Shop
+# Sample Smarter, Not Harder (Or Not At All!)
 
-The demo from the sampling talk at KubeCon + CloudNativeCon North America 2026, by Juliano Costa
-(Dash0) and Reese Lee (New Relic).
+The live demo from the talk *Sample Smarter, Not Harder (Or Not At All!)* at KubeCon +
+CloudNativeCon North America 2026, by Juliano Costa (Dash0) and Reese Lee (New Relic). It runs
+on the OpenTelemetry Astronomy Shop.
 
 Telemetry costs something long before it reaches a backend. The app has to create it, the
 network has to carry it, and every Collector along the way has to process it. Sampling decides
