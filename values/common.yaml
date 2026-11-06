@@ -16,7 +16,7 @@ grafana:
 components:
   load-generator:
     envOverrides:
-      # [TK: users] Same value for every stage, dry run included.
+      # Same value for every scenario, dry run included: the comparisons depend on it.
       - name: LOCUST_USERS
         value: "10"
       # Chart bug (since demo 3.0): it points the load generator at 4318, the

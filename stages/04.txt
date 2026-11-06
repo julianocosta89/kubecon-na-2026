@@ -1,4 +1,4 @@
-SCENARIO 04: RUNG 4+, ADAPTIVE TAIL SAMPLING          script: after Stage D
+SCENARIO 04: RUNG 4+, ADAPTIVE TAIL SAMPLING
 
 THE IDEA
   Scenario 03 keeps every error and 10% of the rest. "10%" is a promise about
@@ -29,18 +29,17 @@ THE FLOOD (the point of this scenario)
   2. Perses, about a minute later:
        Row 1  "received" jumps several times over; "sent to Jaeger" barely moves.
        Row 5  the dashed "a fixed 10% would send" line jumps with the traffic;
-              "kept by the budget" stays near it. The budget sampler's 1-in-N
-              rate climbs: that's it adapting.
+              "kept by the gateway" stays near the dotted budget line. The
+              budget sampler's 1-in-N rate climbs: that's it adapting.
   3. Switch loadGeneratorFloodHomepage back to off. The rate relaxes again.
   Optional, same as 03: paymentFailure → 100%; every failure is still kept.
   The flood is heavy on a laptop. Turn it off once the point is made.
 
-THE TRADE-OFF (say it)
+THE TRADE-OFF
   You pay a fixed amount, not a fixed fraction, so the share of a flood you
   keep goes down as the flood goes up. Every kind of trace keeps a minimum,
-  so it settles near the budget, not exactly on it. And it's alpha: three
-  weeks old in the official build.
+  so it settles near the budget, not exactly on it. And it's alpha: it
+  shipped in otelcol-contrib v0.163.0 (October 2026).
 
 NEXT
-  Back to the slides: the scorecard.
   make run 00      back to the baseline     make stop      when you're done

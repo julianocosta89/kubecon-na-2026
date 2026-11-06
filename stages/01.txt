@@ -1,4 +1,4 @@
-SCENARIO 01: RUNG 0, DON'T CREATE IT                  script: Stage B (1:30–3:00)
+SCENARIO 01: RUNG 0, DON'T CREATE IT
 
 THE IDEA
   The cheapest span is the one you never create. Sampling asks "should I keep
@@ -37,7 +37,7 @@ WHERE TO LOOK
     instead of two, still under the proxy's span. Static-file requests keep
     only the proxy's spans.
 
-THE TRADE-OFF (say it)
+THE TRADE-OFF
   If flagd is ever the problem, there are no flagd spans to look at (its
   metrics still flow). The frontend loses its http.server.request.duration
   metric along with the library. Only do this for telemetry you're sure you

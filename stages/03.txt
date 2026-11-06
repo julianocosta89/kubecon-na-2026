@@ -1,4 +1,4 @@
-SCENARIO 03: RUNG 4, TAIL SAMPLING                    script: Stage D (5:00–7:00)
+SCENARIO 03: RUNG 4, TAIL SAMPLING
 
 THE IDEA
   Wait until the whole trace is in, then decide with full knowledge:
@@ -28,11 +28,11 @@ THE SAME FAILURE, KEPT
      up 10–15 s late). "30 payments failed. You get all 30."
   3. Switch paymentFailure back to off.
 
-THE RECEIPT (say it)
+THE RECEIPT
   A second tier of Collectors that holds every trace in memory for 10 s. You pay
   in infrastructure to keep exactly the traces you care about.
 
 NEXT
   make run 04      same tier, but a budget instead of a percentage
-  Or back to the slides: the scorecard. So the question isn't "head or tail?",
-  it's "where on this ladder does each kind of telemetry belong?"
+  The question isn't "head or tail?", it's "where on this ladder does each
+  kind of telemetry belong?"
