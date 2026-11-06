@@ -26,7 +26,7 @@ WHERE TO LOOK
   Shop     {{SHOP}}
     Buy a telescope: that's your checkout trace.
   Flags    {{SHOP}}/feature
-    paymentFailure (scenarios 02-04) and loadGeneratorFloodHomepage (scenario 04)
+    paymentFailure (scenarios 02-04)
 
 NEXT
   make run 01      stop creating telemetry nobody needs, at the source

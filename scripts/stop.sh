@@ -5,6 +5,7 @@ set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 need kind
 
+cancel_auto_surge
 info "Stopping port-forwards"
 bash "$ROOT/scripts/port-forward.sh" stop >/dev/null 2>&1 || true
 
@@ -15,5 +16,5 @@ else
   info "kind cluster '$KIND_CLUSTER' doesn't exist; nothing to delete"
 fi
 
-rm -f "$STAGES_LOG" "$RUN_DIR"/before.* "$RUN_DIR"/after.* "$RUN_DIR/gateway-mode"
+rm -f "$STAGES_LOG" "$RUN_DIR"/before.* "$RUN_DIR"/after.* "$RUN_DIR/gateway-mode" "$RUN_DIR/surge.log"
 ok "Clean. Measurements in results/ are kept. Start again with: make start"

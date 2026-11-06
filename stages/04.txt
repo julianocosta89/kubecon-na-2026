@@ -6,38 +6,29 @@ THE IDEA
   Adaptive tail sampling keeps a promise about volume instead:
 
     keep-errors   any span with status ERROR   → always kept, as before
-    budget        everything else shares ~15 spans/s per gateway pod
+    budget        everything else shares ~5 spans/s per gateway pod
 
   It learns a rate for each kind of trace (fingerprint: the service that
-  started it + the routes it touched) and re-tunes every 15 s. A kind that
-  suddenly floods in gets sampled hard; rare kinds keep a bigger share, so
-  the unusual stuff stays visible when the boring stuff spikes.
+  started it) and re-tunes every 15 s. Kinds that
+  get busier get sampled harder; rare kinds keep a bigger share, so the
+  unusual stuff stays visible when the boring stuff spikes.
 
   Same gateway tier as 03, same agents. Only the gateway's processor changes:
   tail_sampling → adaptive_tail_sampling (otelcol-contrib v0.163+, alpha).
 @@CHANGES@@
 WHERE TO LOOK
   Perses   {{PERSES}}
-    Row 5  Adaptive sampling: kept vs. a fixed 10%, traces kept/dropped per
-           rule, and the sample rate the budget settles on (1 in N).
-           Give it 30 s after the switch: the sampler starts at 10% and
-           learns real rates after its first 15 s adjustment.
 
-THE FLOOD (the point of this scenario)
-  1. {{SHOP}}/feature → loadGeneratorFloodHomepage → on
-     The load generator now hits the homepage 100 times per flood task.
-  2. Perses, about a minute later:
-       Row 1  "received" jumps several times over; "sent to Jaeger" barely moves.
-       Row 5  the dashed "a fixed 10% would send" line jumps with the traffic;
-              "kept by the gateway" stays near the dotted budget line. The
-              budget sampler's 1-in-N rate climbs: that's it adapting.
-  3. Switch loadGeneratorFloodHomepage back to off. The rate relaxes again.
+THE SURGE (the point of this scenario)
+  1. The surge starts on its own {{SURGE_DELAY}} s after this output (time below),
+     once the charts have settled at the normal load.
+     Three load generator pods instead of one: three times the shoppers,
+     three times the traces, of the same kinds. New pods start within ~30 s.
   Optional, same as 03: paymentFailure → 100%; every failure is still kept.
-  The flood is heavy on a laptop. Turn it off once the point is made.
 
 THE TRADE-OFF
-  You pay a fixed amount, not a fixed fraction, so the share of a flood you
-  keep goes down as the flood goes up. Every kind of trace keeps a minimum,
+  You pay a fixed amount, not a fixed fraction, so the share of the traffic you
+  keep goes down as the traffic goes up. Every kind of trace keeps a minimum,
   so it settles near the budget, not exactly on it. And it's alpha: it
   shipped in otelcol-contrib v0.163.0 (October 2026).
 

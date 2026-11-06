@@ -11,7 +11,8 @@ Subcommands:
   flag NAME VARIANT|off   set a flagd flag the same way the flagd UI does
   scopes [--service S]    rank instrumentation scopes, to pick the rung-0 library
   errors-kept             flag on for FLAG_MINUTES, count failed spans kept vs. counted
-  flood                   homepage flood for a few minutes: spans received vs. sent, before and during
+  load N                  run N load generator pods (10 users each); 1 is the normal load
+  surge                   SURGE_REPLICAS pods for SURGE_MINUTES: spans received vs. sent, before and during
   overhead                SDK on vs. off CPU for OVERHEAD_SERVICES
   scorecard               the scorecard numbers for every stage in the stage log
 """
@@ -328,15 +329,39 @@ SDK_OFF = {
 }
 
 
-# ───────────────────────────── flood ──────────────────────────────
+# ───────────────────────────── load ───────────────────────────────
 
-FLOOD_FLAG = "loadGeneratorFloodHomepage"
+SURGE_REPLICAS = int(S["SURGE_REPLICAS"])
 
 
-def cmd_flood(a):
-    """The load generator's homepage flood: what the sampler sends while traffic jumps.
-    Scenario 02 (fixed 10%) should send ~10x more during the flood; scenario 04
-    (adaptive budget) should stay near its budget."""
+def kubectl_out(*args):
+    ctx = ["--context", S["KUBE_CONTEXT"]] if S.get("KUBE_CONTEXT") else []
+    r = subprocess.run(["kubectl"] + ctx + ["-n", NS] + list(args), capture_output=True, text=True)
+    if r.returncode != 0:
+        die("kubectl %s → %s" % (" ".join(args), r.stderr.strip()))
+    return r.stdout.strip()
+
+
+def set_load(pods):
+    """More pods, not more users per pod: each pod runs the same 10 users
+    (browser user included), so the traffic mix stays the same. One pod with
+    30 users runs out of CPU and its browser traffic drops."""
+    kubectl_out("scale", "deploy/load-generator", "--replicas=%d" % pods)
+    event("load", str(pods))
+
+
+def cmd_load(a):
+    before = kubectl_out("get", "deploy/load-generator", "-o", "jsonpath={.spec.replicas}")
+    set_load(a.pods)
+    info("Load generator: %s → %d pod%s (%d users).%s" % (
+        before, a.pods, "" if a.pods == 1 else "s", a.pods * 10,
+        " New pods start shopping within ~30 s." if a.pods > int(before or 1) else ""))
+
+
+def cmd_surge(a):
+    """Triple the load: what each scenario sends while traffic jumps.
+    Scenario 02 (fixed 10%) sends ~3x more during the surge; scenario 04
+    (adaptive budget) stays near its budget."""
     stage = a.stage or current_stage() or die("no scenario applied yet (make start)")
     warm, measure = 120, max(60, a.minutes * 60 - 120)
     tiers = collector_tiers(stage)
@@ -346,29 +371,30 @@ def cmd_flood(a):
     t0 = time.time()
     before_in = median_of(prom_range(q_in, t0 - 300, t0))
     before_out = median_of(prom_range(q_out, t0 - 300, t0))
-    info("Scenario %s: %s on for %d min (first 2 are warm-up)" % (stage, FLOOD_FLAG, a.minutes))
-    set_flag(FLOOD_FLAG, "on")
+    info("Scenario %s: load generator 1 → %d pods for %d min (first 2 are warm-up)" % (stage, a.pods, a.minutes))
+    set_load(a.pods)
     try:
-        sleep_with_progress(warm + measure, "homepage flood on")
+        sleep_with_progress(warm + measure, "load surge on")
     finally:
-        set_flag(FLOOD_FLAG, "off")
+        set_load(1)
     t1 = time.time()
-    flood_in = median_of(prom_range(q_in, t1 - measure, t1))
-    flood_out = median_of(prom_range(q_out, t1 - measure, t1))
-    rec = {"stage": stage, "t_on": int(t0), "t_off": int(t1),
-           "before_in": before_in, "before_out": before_out, "flood_in": flood_in, "flood_out": flood_out}
-    with open(os.path.join(RESULTS_DIR, "flood.jsonl"), "a") as f:
+    surge_in = median_of(prom_range(q_in, t1 - measure, t1))
+    surge_out = median_of(prom_range(q_out, t1 - measure, t1))
+    rec = {"stage": stage, "t_on": int(t0), "t_off": int(t1), "pods": a.pods,
+           "before_in": before_in, "before_out": before_out, "surge_in": surge_in, "surge_out": surge_out}
+    with open(os.path.join(RESULTS_DIR, "surge.jsonl"), "a") as f:
         f.write(json.dumps(rec) + "\n")
     ratio = lambda a_, b_: ("x%.1f" % (a_ / b_)) if a_ and b_ else "—"
     print()
-    print("                      before   during flood")
-    print("  spans received /s   %6s   %6s  (%s)" % (fmt(before_in), fmt(flood_in), ratio(flood_in, before_in)))
-    print("  spans sent /s       %6s   %6s  (%s)" % (fmt(before_out), fmt(flood_out), ratio(flood_out, before_out)))
-    print(c("2", "  saved to results/flood.jsonl"))
+    print("                      before   during surge")
+    print("  spans received /s   %6s   %6s  (%s)" % (fmt(before_in), fmt(surge_in), ratio(surge_in, before_in)))
+    print("  spans sent /s       %6s   %6s  (%s)" % (fmt(before_out), fmt(surge_out), ratio(surge_out, before_out)))
+    print(c("2", "  saved to results/surge.jsonl; back to 1 pod"))
 
 
 def kubectl(*args):
-    subprocess.run(["kubectl", "-n", NS] + list(args), check=True, stdout=subprocess.DEVNULL)
+    ctx = ["--context", S["KUBE_CONTEXT"]] if S.get("KUBE_CONTEXT") else []
+    subprocess.run(["kubectl"] + ctx + ["-n", NS] + list(args), check=True, stdout=subprocess.DEVNULL)
 
 
 def cmd_overhead(a):
@@ -435,7 +461,10 @@ def flag_on_times():
         with open(path) as f:
             for line in f:
                 parts = line.split()
-                if len(parts) >= 3 and parts[1] == "flag" and not parts[2].endswith("=off"):
+                # Anything that changes the load ends a measuring window: a flag
+                # switched on, or more than one load generator pod.
+                if len(parts) >= 3 and ((parts[1] == "flag" and not parts[2].endswith("=off"))
+                                        or (parts[1] == "load" and parts[2] != "1")):
                     out.append(int(parts[0]))
     return out
 
@@ -501,17 +530,17 @@ def cmd_scorecard(a):
         svc = " · ".join("%s m" % fmt(svc_cpu.get(s) and svc_cpu.get(s) * 1000) for s in services)
         lines.append("| %s %s | %s | %s | %s | %s | %s | %s |"
                      % (stage, names[stage], fmt(spans_in), fmt(spans_out), coll, errs, svc, note))
-    flood = last_jsonl("flood.jsonl", "stage")
-    if flood:
+    surge = last_jsonl("surge.jsonl", "stage")
+    if surge:
         lines.append("")
-        lines.append("## Under the homepage flood (loadGeneratorFloodHomepage on)")
+        lines.append("## Under a load surge (load generator 1 → %d pods)" % SURGE_REPLICAS)
         lines.append("")
-        lines.append("| Scenario | Spans received /s: before → flood | Spans sent /s: before → flood |")
+        lines.append("| Scenario | Spans received /s: before → surge | Spans sent /s: before → surge |")
         lines.append("|---|---:|---:|")
-        for st in sorted(flood):
-            r = flood[st]
-            lines.append("| %s %s | %s → %s | %s → %s |" % (st, names.get(st, ""), fmt(r["before_in"]), fmt(r["flood_in"]),
-                                                       fmt(r["before_out"]), fmt(r["flood_out"])))
+        for st in sorted(surge):
+            r = surge[st]
+            lines.append("| %s %s | %s → %s | %s → %s |" % (st, names.get(st, ""), fmt(r["before_in"]), fmt(r["surge_in"]),
+                                                       fmt(r["before_out"]), fmt(r["surge_out"])))
     if overhead:
         lines.append("")
         lines.append("## In-process overhead (SDK on vs. off, same service, same load)")
@@ -556,10 +585,15 @@ def main():
     e.add_argument("--minutes", type=int, default=int(S["FLAG_MINUTES"]))
     e.set_defaults(fn=cmd_errors_kept)
 
-    fl = sub.add_parser("flood")
-    fl.add_argument("--stage")
-    fl.add_argument("--minutes", type=int, default=5)
-    fl.set_defaults(fn=cmd_flood)
+    ld = sub.add_parser("load")
+    ld.add_argument("pods", type=int)
+    ld.set_defaults(fn=cmd_load)
+
+    su = sub.add_parser("surge")
+    su.add_argument("--stage")
+    su.add_argument("--pods", type=int, default=SURGE_REPLICAS)
+    su.add_argument("--minutes", type=int, default=int(S["SURGE_MINUTES"]))
+    su.set_defaults(fn=cmd_surge)
 
     o = sub.add_parser("overhead")
     o.add_argument("--services", default=S["OVERHEAD_SERVICES"])

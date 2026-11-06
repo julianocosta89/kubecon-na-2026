@@ -49,6 +49,7 @@ That's the whole interface:
 | `make run 03` | Rung 4: tail sampling on a gateway tier |
 | `make run 04` | Adaptive tail sampling: a budget instead of a percentage |
 | `make run 00` | Back to the baseline |
+| `make surge` | Triples the traffic (3 load generator pods); `make surge off` goes back. `make run 04` starts it on its own after 90 s |
 | `make stop` | Deletes the cluster and everything in it |
 
 Scenarios can run in any order, and running one twice is harmless. Every `make run` prints three
@@ -180,20 +181,32 @@ make run 04
 
 "10%" is a promise about a ratio, not about your bill: if traffic triples, so does what you
 keep. The same gateway now runs `adaptive_tail_sampling` instead. It keeps every trace with an
-error, and everything else shares a budget of about 15 spans/s per gateway pod. The sampler
-learns a rate for each kind of trace (the service that started it plus the routes it touched)
-and adjusts every 15 s. A kind that suddenly floods in gets sampled hard, while rare kinds keep
-a bigger share.
+error, and everything else shares a budget of about 5 spans/s per gateway pod (10 in total),
+roughly what a fixed 10% keeps at the normal load. So 03 and 04 start out level. The sampler
+learns a rate for each kind of trace (the service that started it) and adjusts every 15 s.
+Kinds that get busier get sampled harder, while rare kinds keep a bigger share.
 
-**The flood:**
+**The surge:**
 
-1. In the flagd UI, switch `loadGeneratorFloodHomepage` **on**. The load generator now hits the
-   homepage 100 times per flood task.
-2. After about a minute, row 1's "received" line jumps several times over while "sent to Jaeger"
-   barely moves. In row 5, the dashed "a fixed 10% would send" line jumps with the traffic, and
-   "kept by the gateway" stays near the dotted budget line. The "1 in N" rate climbs: that's the
-   sampler adapting.
-3. Switch the flood **off** again; it's heavy on a laptop.
+1. The surge starts on its own 90 s after `make run 04` prints its notes (the exact time is on
+   the last line), so the charts first settle at the normal load. `make surge` starts it right
+   away; `make surge off` cancels it. The load generator goes from one pod to three, each with
+   the same 10 users: three times the shoppers, three times as many traces, of the same kinds.
+   The new pods start shopping within about 30 s.
+2. After about a minute, row 1's "received" line triples while "sent to Jaeger" barely moves. In
+   row 5, the dashed "a fixed 10% would send" line triples with the traffic, and "kept by the
+   gateway" stays near the dotted budget line. Traces dropped by the budget rule triple, kept
+   ones don't, and the "1 in N" rate climbs: that's the sampler adapting.
+3. Run `make surge off` to go back. The next `make run` also ends the surge.
+
+Why pods and not more users? Most of the demo's spans come from the load generator's browser
+users (headless Chromium). One pod with 30 users runs out of CPU, its browser traffic halves,
+and the total barely moves. Three pods keep the same mix on more CPU.
+
+Why not the demo's `loadGeneratorFloodHomepage` flag? It doesn't add traces. Each flood task
+makes 100 homepage requests inside one trace (601 spans), and while a user floods it isn't
+shopping, so the number of traces per second stays the same. Only the spans go up, and the
+per-trace charts in row 5 don't move.
 
 **Trade-off:** you pay a fixed amount, not a fixed fraction. Every kind of trace keeps a minimum
 share, so it settles near the budget rather than exactly on it. The processor is **alpha**: it
@@ -268,16 +281,16 @@ These tools aren't make targets; run them while the cluster is up:
 bash scripts/validate.sh                     # render every scenario; the Collector validates each config
 python3 scripts/demo.py scopes               # spans per trace by instrumentation library, with the env var that turns each off
 python3 scripts/demo.py overhead             # app CPU with the SDK on vs. off: checkout (Go), ad (Java), cart (.NET), ~30 min each
-python3 scripts/demo.py flood                # homepage flood for 5 min: spans received vs. sent, before and during
+python3 scripts/demo.py surge                # 3 load generator pods for 5 min, then back to 1: spans received vs. sent, before and during
 python3 scripts/demo.py flag paymentFailure 100%   # same as the flagd UI; "off" to stop
-caffeinate -i bash scripts/dry-run.sh        # every scenario 15 min + failure test (+ flood in 02 and 04), then the scorecard (~2 h)
+caffeinate -i bash scripts/dry-run.sh        # every scenario 15 min + failure test (+ surge in 02 and 04), then the scorecard (~2 h)
 python3 scripts/demo.py scorecard            # print and save results/scorecard-*.md
 ```
 
 `caffeinate` keeps a Mac awake during the run; leave it out elsewhere. The scorecard takes the
-median of minutes 5–15 after each scenario went live, cut short when the next scenario or a flag
-change comes first. Run the dry run twice: if the two scorecards differ by more than ~10%, find
-out why before trusting either. The timings, users and flag variant are in `settings.env`.
+median of minutes 5–15 after each scenario went live, cut short when the next scenario, a flag
+change or a load change comes first. Run the dry run twice: if the two scorecards differ by more than ~10%, find
+out why before trusting either. The timings, surge size and flag variant are in `settings.env`.
 
 ## Notes
 
@@ -295,9 +308,10 @@ out why before trusting either. The timings, users and flag variant are in `sett
 - **Go has no `OTEL_SDK_DISABLED`.** For the Go service, the "SDK off" run in `overhead` uses
   `OTEL_TRACES_SAMPLER=always_off`, which leaves metrics and logs on. The scorecard labels that
   result as an approximation.
-- **Adaptive tail sampling, tested locally on 0.164.0** with a 15 spans/s budget: traffic up 5.7×
-  during a flood, spans kept up only 1.3× (to ~34/s, where a fixed 10% would have kept ~74/s), and
-  every error kept. Kept volume is lumpy, because a kept flood trace counts all its spans at once.
+- **Adaptive tail sampling settles above its budget.** A kind of trace that is rare enough is
+  kept in full, and those floors add up. With service + `http.route` as the fingerprint the
+  gateway kept 2–3× its budget, so the fingerprint is just the root service. Kept volume is
+  lumpy too: a kept trace counts all its spans at once.
 
 ### Podman
 

@@ -6,36 +6,13 @@ THE IDEA
   involved: the spans are never created, so nothing is serialized, sent,
   received or dropped.
 
-  Two picks, both measured on this shop, both one environment variable:
-
-  flagd, the feature-flag service, traces every flag lookup as three spans:
-    about 1 in 8 of all spans, and nobody has ever debugged a flag lookup.
-    OTEL_TRACES_EXPORTER=none, and flagd stops creating them.
-  frontend, one library: Node's http instrumentation. Next.js already records
-    every request's server span, so http only adds an identical copy, plus a
-    span for every static file (JS chunks, icons). About 1 in 10 spans.
-    OTEL_NODE_DISABLED_INSTRUMENTATIONS=http, and they're gone. Traces stay
-    connected: Next.js picks up the incoming trace context by itself.
-
-  Together: about 1 in 5 spans the shop creates, gone before they exist.
-  The same switch exists per library in every language: Node, Python
+  The same switch exists per library in most languages: Node, Python
   (OTEL_PYTHON_DISABLED_INSTRUMENTATIONS), Java
   (OTEL_INSTRUMENTATION_<NAME>_ENABLED), and .NET.
 @@CHANGES@@
 WHERE TO LOOK
   Perses   {{PERSES}}
-    Row 1  "received" and "sent to Jaeger" both step down by ~20% about a
-           minute after the restart. The load generator's own traffic swings
-           ±10%, so point at the level before and after, not one data point.
-           "Share of spans kept" stays ≈ 100%: we create less, we don't drop more.
-    Row 2  Service CPU and memory: flagd and frontend restart (old and new
-           pods overlap for a minute), then settle. The real saving is downstream:
-           ~20% fewer spans for every Collector and backend to carry.
   Jaeger   {{SHOP}}/jaeger/ui
-    Service flagd: no new traces after the restart.
-    Service frontend, a "GET /api/cart" trace: one frontend server span now
-    instead of two, still under the proxy's span. Static-file requests keep
-    only the proxy's spans.
 
 THE TRADE-OFF
   If flagd is ever the problem, there are no flagd spans to look at (its

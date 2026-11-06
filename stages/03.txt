@@ -6,20 +6,9 @@ THE IDEA
     keep-slow        trace longer than 2 s        → always kept
     sample-the-rest  10% of everything else
 
-  To see a whole trace, one Collector must get all of its spans. A trace's spans
-  come from services on different workers, so they land on different agents.
-  The agents therefore route every span by trace ID to one of the 2 gateway
-  pods ("{{GW}}"), which holds each trace for 10 s and decides.
-
-  The noise filter from scenario 02 stays on the agents; the probabilistic
-  sampler is replaced by the gateway's policies. Span metrics stay complete.
 @@CHANGES@@
 WHERE TO LOOK
   Perses   {{PERSES}}
-    Row 1  "Share of spans kept" a bit above 10%: errors and slow traces on top.
-    Row 2  otel-gateway now has CPU and memory of its own: the bill for the tier.
-    Row 4  Traces kept per policy, and sampled vs. not.
-  Traces arrive about 10 s late: that's the decision_wait.
 
 THE SAME FAILURE, KEPT
   1. {{SHOP}}/feature → paymentFailure → 100%
@@ -34,5 +23,3 @@ THE RECEIPT
 
 NEXT
   make run 04      same tier, but a budget instead of a percentage
-  The question isn't "head or tail?", it's "where on this ladder does each
-  kind of telemetry belong?"

@@ -9,7 +9,7 @@ alternateConfig:
   processors:
     adaptive_tail_sampling:
       # Decide 2 s after the trace's root span arrives (stragglers land meanwhile),
-      # or after 45 s at the latest (a homepage-flood trace runs 100 requests).
+      # or after 45 s at the latest for traces whose root never arrives.
       decision_delay: 2s
       trace_timeout: 45s
       num_traces: 50000
@@ -26,18 +26,25 @@ alternateConfig:
 
         # Everything else shares a budget instead of a percentage. The sampler
         # learns a rate per kind of trace (fingerprint: the service that started
-        # it + the routes it touched), re-tuned every 15 s. Common kinds, like a
-        # homepage flood, get sampled hard; rare kinds keep a bigger share.
+        # it), re-tuned every 15 s. Common kinds get sampled hard when traffic
+        # surges; rare kinds keep a bigger share.
+        #
+        # Keep the fingerprint coarse. A kind that is rare enough is kept in
+        # full, and those floors add up: with service + http.route (dozens of
+        # kinds) the gateway kept 2-3x its budget and the budget never bound.
         - name: budget
           sampler:
             type: adaptive_throughput
-            # Per gateway pod: 2 pods x 15 = ~30 spans/s in total. Every kind of
-            # trace keeps a minimum share, so it settles somewhat above this.
-            goal_throughput: 15
+            # Per gateway pod: 2 pods x 5 = ~10 spans/s in total. That's about
+            # what a fixed 10% keeps at the normal load (1 load generator pod,
+            # ~115 spans/s in), so the two start level and split apart when the
+            # load surges.
+            # Every kind of trace keeps a minimum share, so it settles somewhat
+            # above this.
+            goal_throughput: 5
             initial_sampling_percentage: 10
             fingerprint_attributes:
               - root.resource.attributes["service.name"]
-              - span.attributes["http.route"]
             adjustment_interval: 15s
             weight: 0.5
             max_keys: 500

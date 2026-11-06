@@ -62,6 +62,14 @@ port_open() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 
 hr() { printf '%s%s%s\n' "$DIM" "────────────────────────────────────────────────────────────────────────" "$N"; }
 
+# A surge scheduled by `make run 04` (scripts/surge.sh on --auto, in the background).
+SURGE_PID="$RUN_DIR/surge.pid"
+cancel_auto_surge() {
+  [[ -f $SURGE_PID ]] || return 0
+  kill "$(cat "$SURGE_PID")" 2>/dev/null || true
+  rm -f "$SURGE_PID"
+}
+
 PERSES_URL="http://localhost:$PORT_PERSES/projects/opentelemetry-demo/dashboards/sampling-demo"
 
 # Print one part of stages/NN.txt with the URLs filled in.
@@ -72,5 +80,6 @@ print_notes() {  # $1 = scenario, $2 = 1|2
     | sed -e "s#{{SHOP}}#http://localhost:$PORT_SHOP#g" \
           -e "s#{{PERSES}}#$PERSES_URL#g" \
           -e "s#{{GW}}#$GATEWAY_RELEASE#g" \
+          -e "s#{{SURGE_DELAY}}#${SURGE_DELAY:-0}#g" \
           -e "s#^\([A-Z][A-Z0-9 ,'():+-]*\)\$#$B\1$N#"
 }

@@ -2,7 +2,7 @@
 # The dry-run protocol from the demo doc, unattended:
 #   for each scenario: apply it, run WARMUP_MIN + MEASURE_MIN under fixed load,
 #   then switch the payment failure on for FLAG_MINUTES and count what's kept.
-#   In 02 and 04 also run the homepage flood for 5 min: fixed 10% vs. a budget.
+#   In 02 and 04 also surge the load (load generator 1 → 3 pods) for 5 min: fixed 10% vs. a budget.
 #   At the end: the scorecard.
 # Run it twice. If the two scorecards differ by more than ~10%, find out why.
 # On a Mac, keep the laptop awake:  caffeinate -i bash scripts/dry-run.sh
@@ -21,8 +21,8 @@ for stage in 00 01 02 03 04; do
   sleep $(((WARMUP_MIN + MEASURE_MIN) * 60))
   python3 "$ROOT/scripts/demo.py" errors-kept --stage "$stage"
   if [[ $stage == 02 || $stage == 04 ]]; then
-    sleep 60   # let the failure run drain before the flood
-    python3 "$ROOT/scripts/demo.py" flood --stage "$stage"
+    sleep 60   # let the failure run drain before the surge
+    python3 "$ROOT/scripts/demo.py" surge --stage "$stage"
   fi
 done
 

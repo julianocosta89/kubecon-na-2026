@@ -4,35 +4,17 @@ THE IDEA
   Scenario 01's switches stay on; everything else the apps create reaches the
   Collector, and the Collector decides. Two steps, both cheap:
 
-  Rung 2, filter: drop what you can name. Here: the proxy tracing our own
-    tooling (browser telemetry uploads, the Jaeger UI, the flag UI, the
-    load-generator UI). One OTTL rule. Telemetry about telemetry; nobody debugs it.
-  Rung 3, probabilistic sampling: keep 10% of traces. The sampler hashes the
-    trace ID, so all three agents agree on every trace without talking to each
-    other, and nothing has to be remembered.
-
   Span metrics are computed before both steps, so request and error rates stay
   complete. That's why the traces pipeline is split in two in the diff below.
 @@CHANGES@@
 WHERE TO LOOK
   Perses   {{PERSES}}
-    Row 1  "sent to Jaeger" drops to about a tenth of "received";
-           "Share of spans kept" ≈ 10%.
-    Row 2  Collector CPU barely moves: the work is cheap and stateless.
   Jaeger   {{SHOP}}/jaeger/ui
     Service frontend-proxy: no new traces for /jaeger, /feature or /otlp-http.
 
 THE BLIND SPOT
   1. Break payments: {{SHOP}}/feature → paymentFailure → 100%
-     The shop only places ~6 orders a minute (10 users), so 100% means
-     ~6 failures a minute. 50% leaves too few to see.
-  2. Perses: set the time range to "Last 5 minutes", then row 3, "The failure":
-       left   "Failed payments": every failure, counted by span metrics
-       right  the failed payments you can debug: their traces in Jaeger,
-              about 1 in 10 of them
-     Read it as two numbers: "30 payments failed. You get 3 to debug with."
-     Turn the flag on as soon as the scenario is live, so a few minutes of
-     failures pile up before you point at it (~6 failures a minute).
+  2. Perses: set the time range to "Last 5 minutes", then row 3, "The failure".
   3. Switch paymentFailure back to off.
 
 THE TRADE-OFF

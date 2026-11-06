@@ -431,7 +431,7 @@
         "spec": {
           "display": {
             "name": "Spans kept per second: the budget vs. a fixed 10%",
-            "description": "Kept by the gateway: what adaptive tail sampling sends to Jaeger (scenario 04). A fixed 10% would send: a tenth of what the Collector receives, i.e. scenario 02 or 03 without errors. Turn the homepage flood on: the dashed line jumps with traffic, the solid one stays near the budget."
+            "description": "Kept by the gateway: what adaptive tail sampling sends to Jaeger (scenario 04). A fixed 10% would send: a tenth of what the Collector receives, i.e. scenario 02 or 03 without errors. At the normal load the two start level. Surge the load (python3 scripts/demo.py load 3): the dashed line triples with traffic, the solid one stays near the budget."
           },
           "plugin": {
             "kind": "TimeSeriesChart",
@@ -495,8 +495,8 @@
                 "plugin": {
                   "kind": "PrometheusTimeSeriesQuery",
                   "spec": {
-                    "query": "vector(30)",
-                    "seriesNameFormat": "budget: 2 pods x 15"
+                    "query": "vector(10)",
+                    "seriesNameFormat": "budget: 2 pods x 5"
                   }
                 }
               }
@@ -565,7 +565,7 @@
         "spec": {
           "display": {
             "name": "Budget sampler: keeps 1 in N",
-            "description": "The average sample rate the budget rule settled on. It climbs when a flood arrives (the sampler adapting) and relaxes when the flood stops."
+            "description": "The average sample rate the budget rule settled on. It climbs when the load surges (the sampler adapting) and relaxes when the load goes back to normal."
           },
           "plugin": {
             "kind": "TimeSeriesChart",

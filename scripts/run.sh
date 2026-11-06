@@ -9,6 +9,8 @@ set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 need helm kubectl
 require_context
+# A surge scheduled by an earlier `make run 04` must not fire mid-switch.
+cancel_auto_surge
 
 SCENARIO="${1:-}"
 NOTES=true
@@ -61,6 +63,8 @@ t0=$(date +%s)
 helm upgrade --install "$RELEASE" open-telemetry/opentelemetry-demo \
   --version "$DEMO_CHART_VERSION" -n "$NAMESPACE" --create-namespace \
   "${args[@]}" ${wait_flag[@]+"${wait_flag[@]}"} >/dev/null
+# Undo a surge left on (make surge, make run 04): every scenario starts at the same load.
+k scale deploy/load-generator --replicas=1 >/dev/null 2>&1 || true
 info "Waiting for the Collector and the services to finish restarting"
 wait_rollouts
 t1=$(date +%s)
@@ -153,3 +157,14 @@ fi
 # ── Part 2: where to look, what to say, what's next ───────────────────────────
 print_notes "$SCENARIO" 2
 hr
+
+# Scenario 04 on stage: the surge starts by itself, SURGE_DELAY s from now,
+# so the charts first settle at the normal load. Not in the dry run (--no-notes).
+if [[ $SCENARIO == 04 && ${SURGE_DELAY:-0} -gt 0 ]]; then
+  nohup bash -c "sleep $SURGE_DELAY; bash '$ROOT/scripts/surge.sh' on --auto" \
+    >> "$RUN_DIR/surge.log" 2>&1 < /dev/null &
+  echo $! > "$SURGE_PID"
+  at=$(date -r $(( $(date +%s) + SURGE_DELAY )) '+%H:%M:%S' 2>/dev/null \
+    || date -d "@$(( $(date +%s) + SURGE_DELAY ))" '+%H:%M:%S')
+  echo "${B}SURGE${N} starts on its own at ${B}$at${N} (in ${SURGE_DELAY} s).  Now: make surge   Never: make surge off"
+fi
